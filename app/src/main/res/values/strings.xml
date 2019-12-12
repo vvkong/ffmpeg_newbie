@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">ffmpeg_newbie</string>
+    <array name="video_names">
+        <item>test.avi</item>
+        <item>test.flv</item>
+        <item>test.gif</item>
+        <item>test.mkv</item>
+        <item>test.mp4</item>
+        <item>ttt.yuv</item>
+    </array>
+</resources>
