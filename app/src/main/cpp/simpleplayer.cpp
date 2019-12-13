@@ -105,14 +105,13 @@ Java_com_godot_ffmpeg_1newbie_player_SimplePlayer_render(JNIEnv *env, jobject th
 
     // 设置窗体缓冲区，宽、高、像素格式，注意与surface像素格式一致
     // 变形就是与surface的高、宽不一致导致的
-//    ANativeWindow_setBuffersGeometry(native_window, decodec_ctx->width, decodec_ctx->height, WINDOW_FORMAT_RGBA_8888);
     ANativeWindow_setBuffersGeometry(native_window, window_width, window_height, WINDOW_FORMAT_RGBA_8888);
 
     // 可以直接采用AV_PIX_FMT_ARGB 么？待测试
     // 解码出来一定是YUV420格式的帧么？能指定不？待测
     frame = av_frame_alloc();
     yuv_frame = av_frame_alloc();
-    if( av_image_alloc(yuv_frame->data, yuv_frame->linesize, decodec_ctx->width, decodec_ctx->height, AV_PIX_FMT_YUV420P, 1) < 0 ) {
+    if( av_image_alloc(yuv_frame->data, yuv_frame->linesize, adj_video_width, adj_video_height, AV_PIX_FMT_YUV420P, 1) < 0 ) {
         LOGE("av_image_alloc fail for yuv frame. %s", "");
         goto label_end;
     }
@@ -120,21 +119,17 @@ Java_com_godot_ffmpeg_1newbie_player_SimplePlayer_render(JNIEnv *env, jobject th
     LOGD("decodec_ctx->pix_fmt: %d, AV_PIX_FMT_YUV420P: %d", decodec_ctx->pix_fmt, AV_PIX_FMT_YUV420P);
 
     rgb_frame = av_frame_alloc();
-    // rgb 缓冲区自己申请
-//    av_image_alloc(rgb_frame->data, rgb_frame->linesize, decodec_ctx->width, decodec_ctx->height, AV_PIX_FMT_RGBA, 1);
+    // rgb 缓冲区自己申请，共享没搞定？有办法么？
     av_image_alloc(rgb_frame->data, rgb_frame->linesize, adj_video_width, adj_video_height, AV_PIX_FMT_RGBA, 1);
 
     // 解码后的Frame->yuv frame
     sws_yuv_ctx = sws_getContext(decodec_ctx->width, decodec_ctx->height, decodec_ctx->pix_fmt,
-                             decodec_ctx->width, decodec_ctx->height, AV_PIX_FMT_YUV420P,
+                             adj_video_width, adj_video_height, AV_PIX_FMT_YUV420P,
                              SWS_BICUBIC, NULL, NULL, NULL);
     if( !sws_yuv_ctx ) {
         LOGE("sws_getContext fail. %s", "");
     }
 
-//    sws_rgb_ctx = sws_getContext(decodec_ctx->width, decodec_ctx->height, decodec_ctx->pix_fmt,
-//                                 decodec_ctx->width, decodec_ctx->height, AV_PIX_FMT_RGBA,
-//                                 SWS_BICUBIC, NULL, NULL, NULL);
     sws_rgb_ctx = sws_getContext(decodec_ctx->width, decodec_ctx->height, decodec_ctx->pix_fmt,
                                  adj_video_width, adj_video_height, AV_PIX_FMT_RGBA,
                                  SWS_BICUBIC, NULL, NULL, NULL);
@@ -179,20 +174,29 @@ Java_com_godot_ffmpeg_1newbie_player_SimplePlayer_render(JNIEnv *env, jobject th
                     LOGE("sws_scale fail, ret: %s", "");
                     break;
                 }
+                // 方法一 ffmpeg直接转 或 方法二 libyuv 变换
+
+#define USE_LIB_YUV 0
+#if USE_LIB_YUV
+                // 方法一 ffmpeg直接转
                 if( sws_scale(sws_rgb_ctx, frame->data, frame->linesize, 0, frame->height,
                               rgb_frame->data, rgb_frame->linesize) < 0 ) {
                     LOGE("sws_scale fail, ret: %s", "");
                     break;
                 }
-
-                // 变换有问题？？why？
-                /*libyuv::I420ToRGBA(
+#else
+                // 方法二 libyuv 变换
+                // 参数梗
+                // YUV420P，Y，U，V三个分量都是平面格式，分为I420和YV12
+                // I420格式和YV12格式的不同处在U平面和V平面的位置不同
+                // 在I420格式中，U平面紧跟在Y平面之后，然后才是V平面（即：YUV）；但YV12则是相反（即：YVU）。
+                libyuv::I420ToARGB(
                         yuv_frame->data[0], yuv_frame->linesize[0],
-                        yuv_frame->data[1], yuv_frame->linesize[1],
                         yuv_frame->data[2], yuv_frame->linesize[2],
+                        yuv_frame->data[1], yuv_frame->linesize[1],
                         rgb_frame->data[0], rgb_frame->linesize[0],
-                        decodec_ctx->width, decodec_ctx->height);*/
-
+                        adj_video_width, adj_video_height);
+#endif
                 // 拷贝rgba frame的像素值到窗口缓冲区上，刷新即可展示
                 uint8_t *dst = (uint8_t *) out_buffer.bits;
                 //解码后的像素数据首地址
