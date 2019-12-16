@@ -5,6 +5,10 @@
 
 cmake_minimum_required(VERSION 3.4.1)
 
+#target_link_directories()
+#link_directories()
+#include_directories()
+
 add_library(libavcodec SHARED IMPORTED)
 set_target_properties(libavcodec PROPERTIES IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libavcodec-58.so")
 
@@ -71,6 +75,7 @@ target_link_libraries( # Specifies the target library.
         "libavutil"
         "libavcodec"
         "libswscale"
+        libswresample
         "jnigraphics"
         "android"
         )

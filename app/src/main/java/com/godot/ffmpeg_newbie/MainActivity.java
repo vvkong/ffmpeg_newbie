@@ -5,6 +5,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -12,6 +14,8 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+
+import com.godot.ffmpeg_newbie.player.SimpleAudioPlay;
 
 import java.io.File;
 
@@ -27,10 +31,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private TextView tvInfo;
-    public static final String VIDEO_PATH = "/sdcard/avtest/test.mp4";
+    public static final String VIDEO_PATH = "/sdcard/avtest";
     public static final String VIDEO_DST_PATH = "/sdcard/avtest/";
     private int clickId;
-
+    private Spinner spinner;
+    SimpleAudioPlay simpleAudioPlay = new SimpleAudioPlay();
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,6 +45,13 @@ public class MainActivity extends AppCompatActivity {
         TextView tv = findViewById(R.id.sample_text);
         tv.setText(stringFromJNI());
         tvInfo = findViewById(R.id.tv_info);
+
+        spinner = findViewById(R.id.sp_video);
+        String[] videoArray = getResources().getStringArray(R.array.video_names);
+        ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_1,
+                android.R.id.text1, videoArray);
+        spinner.setAdapter(adapter);
     }
 
     @Override
@@ -92,9 +104,9 @@ public class MainActivity extends AppCompatActivity {
                                 f.delete();
                             }
                             if( id == R.id.btn_trans2yuv_v2 ) {
-                                trans2yuvv2(VIDEO_PATH, dst);
+                                trans2yuvv2(getVideoName(), dst);
                             } else {
-                                trans2yuvv1(VIDEO_PATH, dst);
+                                trans2yuvv1(getVideoName(), dst);
                             }
                             isRunning = false;
                         }
@@ -107,7 +119,14 @@ public class MainActivity extends AppCompatActivity {
             case R.id.btn_simple_player:
                 startActivity(new Intent(this, SimplePlayerActivity.class));
                 break;
+            case R.id.btn_simple_play_audio:
+                simpleAudioPlay.playAudio(getVideoName());
+                break;
         }
+    }
+
+    private String getVideoName() {
+        return VIDEO_PATH + File.separator + spinner.getSelectedItem().toString();
     }
 
     // 获取并打印媒体信息
@@ -115,4 +134,5 @@ public class MainActivity extends AppCompatActivity {
     // 转为yuv格式视频文件
     public static native boolean trans2yuvv1(String videoSrc, String videoDst);
     public static native boolean trans2yuvv2(String videoSrc, String videoDst);
+
 }

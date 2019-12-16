@@ -261,6 +261,7 @@ Java_com_godot_ffmpeg_1newbie_MainActivity_trans2yuvv2(JNIEnv *env, jclass clazz
     const char* src_path = env->GetStringUTFChars(video_src, &isCopy);
     const char* dst_path = env->GetStringUTFChars(video_dst, &isCopy);
     AVStream* vstream = NULL;
+    int video_stream_index = -1;
     AVCodec* decodec = NULL;
     AVCodecParserContext* parser = NULL;
     AVCodecContext* decodec_ctx = NULL;
@@ -288,6 +289,7 @@ Java_com_godot_ffmpeg_1newbie_MainActivity_trans2yuvv2(JNIEnv *env, jclass clazz
     for( int i=0; i<ifmt_ctx->nb_streams; i++ ) {
         if( ifmt_ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ) {
             LOGD("找到视频流, %d", i);
+            video_stream_index = i;
             vstream = ifmt_ctx->streams[i];
             break;
         }
@@ -380,7 +382,9 @@ Java_com_godot_ffmpeg_1newbie_MainActivity_trans2yuvv2(JNIEnv *env, jclass clazz
             data += ret;
             data_size -= ret;
             if( packet->size ) {
-                decode(decodec_ctx, avframe, packet, sws_ctx, yuvframe, fp_out);
+                if( packet->stream_index == video_stream_index ) {
+                    decode(decodec_ctx, avframe, packet, sws_ctx, yuvframe, fp_out);
+                }
             }
         }
     }

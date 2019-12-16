@@ -176,7 +176,7 @@ Java_com_godot_ffmpeg_1newbie_player_SimplePlayer_render(JNIEnv *env, jobject th
                 }
                 // 方法一 ffmpeg直接转 或 方法二 libyuv 变换
 
-#define USE_LIB_YUV 0
+#define USE_LIB_YUV 1
 #if USE_LIB_YUV
                 // 方法一 ffmpeg直接转
                 if( sws_scale(sws_rgb_ctx, frame->data, frame->linesize, 0, frame->height,
