@@ -30,9 +30,7 @@ export ADDI_CFLAGS="-I$NDK/sysroot/usr/include/i686-linux-android -isysroot $NDK
 --disable-symver \
 --disable-stripping \
 --enable-cross-compile \
---target-os=android \
---cc=$TOOLCHAIN/bin/i686-linux-android-gcc \
---nm=$TOOLCHAIN/bin/i686-linux-android-nm \
+--target-os=linux \
 --cross-prefix=$TOOLCHAIN/bin/i686-linux-android- \
 --sysroot=$SYSROOT \
 --arch=$CPU \
@@ -63,5 +61,3 @@ make install
 # SLIB_INSTALL_NAME='$(SLIBNAME_WITH_MAJOR)'
 # #SLIB_INSTALL_LINKS='$(SLIBNAME_WITH_MAJOR) $(SLIBNAME)'
 # SLIB_INSTALL_LINKS='$(SLIBNAME)'
-
-
