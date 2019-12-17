@@ -68,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void getInfo() {
         //printMetaData("file:///android_asset/test.mp4");
-        String ret = printMetaData("/sdcard/DCIM/Camera/VID_20191126220240.mp4");
+        String ret = printMetaData("/sdcard/avtest/test.mp4");
         tvInfo.setText(ret);
     }
 

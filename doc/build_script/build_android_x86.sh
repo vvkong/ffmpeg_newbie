@@ -27,6 +27,7 @@ export ADDI_CFLAGS="-I$NDK/sysroot/usr/include/i686-linux-android -isysroot $NDK
 --disable-ffprobe \
 --disable-doc \
 --disable-yasm \
+--disable-asm \
 --disable-symver \
 --disable-stripping \
 --enable-cross-compile \
