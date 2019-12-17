@@ -20,6 +20,51 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:theme="@style/AppTheme"
+            android:name=".SchemeDispatcherActivity">
+            <!--<intent-filter>
+                <action
+                    android:name="android.intent.action.VIEW" />
+                <category
+                    android:name="android.intent.category.DEFAULT" />
+                <category
+                    android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="http"
+                    android:host="mobile.cnhnkj.cn" />
+                <data
+                    android:scheme="https"
+                    android:host="mobile.cnhnkj.cn" />
+            </intent-filter>-->
+
+            <!-- Schame -->
+            <!--<intent-filter>
+                <data
+                    android:host="m.aliyun.com"
+                    android:scheme="arouter"/>
+
+                <action android:name="android.intent.action.VIEW"/>
+
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+            </intent-filter>-->
+
+            <!-- App Links -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+
+                <data
+                    android:host="m.aliyun.com"
+                    android:scheme="http"/>
+                <data
+                    android:host="m.aliyun.com"
+                    android:scheme="https"/>
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

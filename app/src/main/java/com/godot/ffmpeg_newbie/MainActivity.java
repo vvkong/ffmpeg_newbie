@@ -122,8 +122,13 @@ public class MainActivity extends AppCompatActivity {
             case R.id.btn_simple_play_audio:
                 simpleAudioPlay.playAudio(getVideoName());
                 break;
+            case R.id.btn_test_pthread:
+                testPthread();
+                break;
         }
     }
+
+    private native static void testPthread();
 
     private String getVideoName() {
         return VIDEO_PATH + File.separator + spinner.getSelectedItem().toString();
