@@ -12,7 +12,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <activity android:name=".SimplePlayerActivity"></activity>
+        <activity android:name=".SimplePlayAVActivity"></activity>
+        <activity android:name=".SimplePlayerActivity" />
         <activity android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -20,11 +21,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <activity
-            android:theme="@style/AppTheme"
-            android:name=".SchemeDispatcherActivity">
-            <!--<intent-filter>
+            android:name=".SchemeDispatcherActivity"
+            android:theme="@style/AppTheme">
+
+            <!--
+            <intent-filter>
                 <action
                     android:name="android.intent.action.VIEW" />
                 <category
@@ -37,10 +39,13 @@
                 <data
                     android:scheme="https"
                     android:host="mobile.cnhnkj.cn" />
-            </intent-filter>-->
+            </intent-filter>
+            -->
+
 
             <!-- Schame -->
-            <!--<intent-filter>
+            <!--
+            <intent-filter>
                 <data
                     android:host="m.aliyun.com"
                     android:scheme="arouter"/>
@@ -49,20 +54,23 @@
 
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-            </intent-filter>-->
+            </intent-filter>
+            -->
+
 
             <!-- App Links -->
             <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW"/>
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
 
                 <data
                     android:host="m.aliyun.com"
-                    android:scheme="http"/>
+                    android:scheme="http" />
                 <data
                     android:host="m.aliyun.com"
-                    android:scheme="https"/>
+                    android:scheme="https" />
             </intent-filter>
         </activity>
     </application>

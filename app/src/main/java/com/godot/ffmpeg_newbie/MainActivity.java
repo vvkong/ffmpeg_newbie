@@ -125,6 +125,9 @@ public class MainActivity extends AppCompatActivity {
             case R.id.btn_test_pthread:
                 testPthread();
                 break;
+            case R.id.btn_play_av:
+                startActivity(new Intent(this, SimplePlayAVActivity.class));
+                break;
         }
     }
 

@@ -87,6 +87,8 @@ static void* p_routine(void* args) {
     pthread_exit((void*)0);
 }
 
+static void testPtr() {
+}
 
 extern "C"
 JNIEXPORT void JNICALL

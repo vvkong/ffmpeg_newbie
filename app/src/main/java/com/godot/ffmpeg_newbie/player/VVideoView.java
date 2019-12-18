@@ -38,4 +38,8 @@ public class VVideoView extends SurfaceView {
     private void init() {
         getHolder().setFormat(PixelFormat.RGBA_8888);
     }
+
+    public void setFormat(int format) {
+        getHolder().setFormat(format);
+    }
 }

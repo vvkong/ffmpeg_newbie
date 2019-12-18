@@ -72,9 +72,9 @@ target_link_libraries( # Specifies the target library.
         "libavutil"
         "libavcodec"
         "libswscale"
-        libswresample
-        "jnigraphics"
-        "android"
+        "libswresample"
+        jnigraphics
+        android
         ${pthread-lib}
         ${log-lib}
         )

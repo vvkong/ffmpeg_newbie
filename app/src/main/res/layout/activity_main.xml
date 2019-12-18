@@ -91,6 +91,15 @@
         android:textColor="#333"
         android:padding="10dp"
         android:onClick="onClick"/>
+    <Button
+        android:id="@+id/btn_play_av"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="简简单单播放音视频"
+        android:textSize="15sp"
+        android:textColor="#333"
+        android:padding="10dp"
+        android:onClick="onClick"/>
 
     <TextView
         android:id="@+id/tv_info"
