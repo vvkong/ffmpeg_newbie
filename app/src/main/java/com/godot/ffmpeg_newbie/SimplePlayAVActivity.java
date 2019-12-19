@@ -38,6 +38,6 @@ public class SimplePlayAVActivity extends AppCompatActivity implements SurfaceHo
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-
+        //SimpleAVPlayer.release();
     }
 }

@@ -16,9 +16,19 @@ extern "C" {
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 
+#define MAX_BUFFER_SIZE (48000 * 4)
+
 #define AUDIO_IDX 0
 #define VIDEO_IDX 1
+// 用c++面向对象来封装更好
 struct PlayerContext {
+    JavaVM* jvm;
+    jobject g_ref_avplay_cls;
+    jobject g_ref_audio_track_cls;
+    jobject g_ref_audio_track;
+    jmethodID audio_write_mid;
+    bool playing;
+
     AVFormatContext* ifmt_ctx;
     // 0 存储音频索引 1 存储视频索引
     int stream_idx[2];
@@ -30,6 +40,8 @@ struct PlayerContext {
     SwsContext* sws_ctx;
 
     // 根据展示窗口调整大小，约定展示格式
+    int sf_width;
+    int sf_height;
     int adjust_width;
     int adjust_height;
     AVPixelFormat pix_fmt;
@@ -37,9 +49,18 @@ struct PlayerContext {
     ANativeWindow_Buffer* buffer;
 
     AVFrame* a_frame;
+    SwrContext* swr_ctx;
+    uint64_t out_layout;
+    int out_nb_channel;
+    AVSampleFormat out_sample_fmt;
+    int out_sample_rate;
+    uint8_t *audio_out_buffer;
 };
 
 static struct PlayerContext g_player_ctx = {
+        .jvm = NULL,
+        .g_ref_avplay_cls = NULL,
+        .playing = false,
         .ifmt_ctx = NULL,
         .stream_idx = {-1, -1},
         .codec_ctx = {NULL, NULL},
@@ -49,10 +70,12 @@ static struct PlayerContext g_player_ctx = {
         .sws_ctx = NULL,
         .nativeWindow = NULL,
         .buffer = NULL,
-        .a_frame = NULL
+        .a_frame = NULL,
+        .swr_ctx = NULL,
+        .audio_out_buffer = NULL
 };
 
-void release_player_context_if_need(PlayerContext& player_ctx);
+void release_player_context_if_need(JNIEnv* env, PlayerContext& player_ctx);
 
 void print_error(const char* msg, int code) {
     char err[256] = {'\0'};
@@ -120,8 +143,57 @@ label_end:
     return success;
 }
 
-void decode_audio_frame(const PlayerContext * const player_ctx, AVPacket& packet) {
+bool decode_audio_frame(JNIEnv* env, const PlayerContext * const player_ctx, AVPacket& packet) {
+    AVCodecContext* avctx = player_ctx->codec_ctx[AUDIO_IDX];
+    AVCodec* codec = player_ctx->codec[AUDIO_IDX];
+    int ret = avcodec_send_packet(avctx, &packet);
+    if( AVERROR(EAGAIN) == ret || AVERROR_EOF == ret ) {
+        return true;
+    } else if( ret < 0 ) {
+        print_error("avcodec_send_packet fail.", ret);
+        return false;
+    }
+    AVFrame* frame = player_ctx->a_frame;
+    while( ret >= 0 ) {
+        ret = avcodec_receive_frame(avctx, frame);
+        if( AVERROR(EAGAIN) == ret || AVERROR_EOF == ret ) {
+            break;
+        } else if( ret < 0 ) {
+            print_error("avcodec_receive_frame fail.", ret);
+            return false;
+        }
+        //int out_samples = swr_get_out_samples(player_ctx->swr_ctx, frame->nb_samples);
+        uint8_t* ob_arr[2] = {NULL, NULL};
+        ob_arr[0] = player_ctx->audio_out_buffer;
+        if( (ret = swr_convert(
+                player_ctx->swr_ctx,
+                ob_arr,
+                frame->nb_samples,
+                (const uint8_t **)(frame->data),
+                frame->nb_samples)) < 0 ) {
+            print_error("swr_convert fail.", ret);
+            return false;
+        }
+        int out_samples = ret;
 
+        int size = av_samples_get_buffer_size(NULL, player_ctx->out_nb_channel, frame->nb_samples, player_ctx->out_sample_fmt, 1);
+        LOGD("av_samples_get_buffer_size: %d, ret*player_ctx->out_nb_channel: %d", size, out_samples*player_ctx->out_nb_channel);
+        if( size < 0 ) {
+            LOGE("av_samples_get_buffer_size fail.%s", "");
+            return false;
+        }
+        jbyteArray jArr = env->NewByteArray(size);
+        if( !jArr ) {
+            LOGE("env->NewByteArray(out_samples*player_ctx->out_nb_channel) fail. %s", "");
+            return false;
+        }
+        env->SetByteArrayRegion(jArr, 0, size,
+                                reinterpret_cast<const jbyte *>(player_ctx->audio_out_buffer));
+        env->CallIntMethod(player_ctx->g_ref_audio_track, player_ctx->audio_write_mid, jArr, 0, size);
+        env->DeleteLocalRef(jArr);
+        //usleep(16*1000);
+    }
+    return true;
 }
 
 bool decode_video_frame(const PlayerContext * const player_ctx, AVPacket& packet) {
@@ -158,8 +230,19 @@ bool decode_video_frame(const PlayerContext * const player_ctx, AVPacket& packet
         LOGD("buffer line size: %d, rgba frame line size: %d", dst_linesize, src_linesize);
         LOGD("rgba frame w: %d, h: %d", player_ctx->rgba_fame->width, player_ctx->rgba_fame->height);
 
+        // 居中展示
+        int xoffset = (dst_linesize-src_linesize) >> 1;
+        if( xoffset < 0 ) {
+            xoffset = 0;
+        }
+        int yoffset = (player_ctx->sf_height-avctx->height) >> 1;
+        if( yoffset < 0 ) {
+            yoffset = 0;
+        }
+        dst += yoffset * (dst_linesize);
+
         for( int i=0; i<avctx->height; i++ ) {
-            memcpy(dst, src, src_linesize);
+            memcpy(dst + xoffset, src, src_linesize);
             dst += dst_linesize;
             src += src_linesize;
         }
@@ -172,28 +255,91 @@ bool decode_video_frame(const PlayerContext * const player_ctx, AVPacket& packet
 void* decode_data_fun(void* args) {
     LOGD("in decode_data_fun, %s", "");
     PlayerContext* player_ctx = (PlayerContext*) args;
+    JNIEnv* env = NULL;
     AVPacket packet;
     int frame_count = 0;
     int ret;
-    while ( (ret=av_read_frame(player_ctx->ifmt_ctx, &packet)) >= 0 ) {
+    if( JNI_OK != player_ctx->jvm->AttachCurrentThread(&env, NULL) ) {
+        LOGE("AttachCurrentThread fail. %s", "");
+        goto label_end;
+    }
+    if( player_ctx->codec_ctx[AUDIO_IDX] ) {
+        jmethodID play_mid = env->GetMethodID(static_cast<jclass>(player_ctx->g_ref_audio_track_cls), "play", "()V");
+        env->CallVoidMethod(player_ctx->g_ref_audio_track, play_mid);
+
+        player_ctx->audio_write_mid = env->GetMethodID(
+                static_cast<jclass>(player_ctx->g_ref_audio_track_cls), "write", "([BII)I");
+    }
+    while ( player_ctx->playing && (ret=av_read_frame(player_ctx->ifmt_ctx, &packet)) >= 0 ) {
         LOGD("decode frame: %d", ++frame_count);
         if( packet.stream_index == player_ctx->stream_idx[AUDIO_IDX] ) {
-            decode_audio_frame(player_ctx, packet);
+            decode_audio_frame(env, player_ctx, packet);
         } else if( packet.stream_index == player_ctx->stream_idx[VIDEO_IDX]){
             decode_video_frame(player_ctx, packet);
         }
         av_packet_unref(&packet);
     }
+
     if( ret < 0 ) {
         print_error("av_read_frame fail. ", ret);
     }
     LOGD("end decode_data_fun %s", "");
-
-    release_player_context_if_need(*player_ctx);
+label_end:
+    release_player_context_if_need(env, *player_ctx);
+    if( env ) {
+        player_ctx->jvm->DetachCurrentThread();
+    }
     pthread_exit(NULL);
 }
 
 bool prepare_for_decode(PlayerContext *const player_ctx, JNIEnv *env, jobject surface) {
+    /**
+     * 音频准备
+     */
+    AVCodecContext* audio_codec_ctx = player_ctx->codec_ctx[AUDIO_IDX];
+    AVCodec* audio_codec = player_ctx->codec[AUDIO_IDX];
+    if( audio_codec_ctx ) {
+        player_ctx->swr_ctx = swr_alloc();
+        if( !player_ctx->swr_ctx ) {
+            LOGE("swr_alloc fail. %s", "");
+            return false;
+        }
+        player_ctx->out_layout = AV_CH_LAYOUT_STEREO;
+        player_ctx->out_nb_channel = av_get_channel_layout_nb_channels(player_ctx->out_layout);
+        player_ctx->out_sample_fmt = AV_SAMPLE_FMT_S16;
+        player_ctx->out_sample_rate = 44100;
+        player_ctx->swr_ctx = swr_alloc_set_opts(player_ctx->swr_ctx,
+                    player_ctx->out_layout, player_ctx->out_sample_fmt, player_ctx->out_sample_rate,
+                    audio_codec_ctx->channel_layout, audio_codec_ctx->sample_fmt, audio_codec_ctx->sample_rate,
+                    0, NULL);
+        if( !player_ctx->swr_ctx ) {
+            LOGE("swr_alloc_set_opts fail. %s", "");
+            return false;
+        }
+        // api 没告诉返回啥成功，略过不表
+        swr_init(player_ctx->swr_ctx);
+
+        player_ctx->audio_out_buffer = static_cast<uint8_t *>(av_malloc(MAX_BUFFER_SIZE));
+        if( !player_ctx->audio_out_buffer ) {
+            LOGE("av_malloc(MAX_BUFFER_SIZE) fail. %s", "");
+            return false;
+        }
+
+        jclass av_player_cls = env->FindClass("com/godot/ffmpeg_newbie/player/SimpleAVPlayer");
+        if( !av_player_cls ) {
+            LOGD("env->FindClass(\"com/godot/ffmpeg_newbie/player/SimpleAVPlayer\") fail. %s", "");
+            return  false;
+        }
+        player_ctx->g_ref_avplay_cls = env->NewGlobalRef(av_player_cls);
+        jmethodID create_au_mid = env->GetStaticMethodID(av_player_cls, "createAudioTrack", "(II)Landroid/media/AudioTrack;");
+        jobject au = env->CallStaticObjectMethod(av_player_cls, create_au_mid, player_ctx->out_sample_rate, player_ctx->out_nb_channel);
+        player_ctx->g_ref_audio_track = env->NewGlobalRef(au);
+        player_ctx->g_ref_audio_track_cls = env->NewGlobalRef(env->GetObjectClass(au));
+    }
+
+    /**
+     * 视频准备
+     */
     AVCodecContext* av_codec_ctx = player_ctx->codec_ctx[VIDEO_IDX];
     // 有展示surface、视频时才进行必要初始化
     if( surface && av_codec_ctx ) {
@@ -222,6 +368,9 @@ bool prepare_for_decode(PlayerContext *const player_ctx, JNIEnv *env, jobject su
             LOGE("ANativeWindow_setBuffersGeometry fail, ret: %d", ret);
             return false;
         }
+        player_ctx->sf_width = sf_width;
+        player_ctx->sf_height = sf_height;
+
         // 与surface设置像素格式一致
         player_ctx->pix_fmt = AV_PIX_FMT_RGBA;
         // 计算视频合适的展示大小(按比例缩放是否能填充窗口大小，以不超出准则来)
@@ -269,6 +418,12 @@ Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_play(JNIEnv *env, jclass cla
     jboolean isCopy = JNI_FALSE;
     PlayerContext* const player_ctx = &g_player_ctx;
 
+    if( JNI_OK != env->GetJavaVM(&player_ctx->jvm) ) {
+        LOGD("GetJavaVM fail %s", "");
+    }
+
+    LOGD("start %#x", &g_player_ctx);
+
     const char* file = env->GetStringUTFChars(file_name, &isCopy);
 
     LOGD("file: %s", file);
@@ -282,6 +437,8 @@ Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_play(JNIEnv *env, jclass cla
     if( !prepare_for_decode(player_ctx, env, surface) ) {
         goto label_end;
     }
+
+    player_ctx->playing = true;
     pthread_t pt;
     pthread_create(&pt, NULL, decode_data_fun, (void*)player_ctx);
     LOGD("after pthread_create %s", "");
@@ -289,22 +446,53 @@ Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_play(JNIEnv *env, jclass cla
     env->ReleaseStringUTFChars(file_name, file);
     return JNI_TRUE;
 label_end:
-    release_player_context_if_need(*player_ctx);
+    release_player_context_if_need(env, *player_ctx);
     env->ReleaseStringUTFChars(file_name, file);
     return JNI_FALSE;
 }
 
+void release_player_context_if_need(JNIEnv* env, PlayerContext& player_ctx) {
+    if( (!env) && player_ctx.codec_ctx[AUDIO_IDX] ) {
+       if( player_ctx.g_ref_audio_track ) {
+           jmethodID stop_mid = env->GetMethodID(static_cast<jclass>(player_ctx.g_ref_audio_track_cls), "stop", "()V");
+           env->CallVoidMethod(player_ctx.g_ref_audio_track, stop_mid);
+           jmethodID release_mid = env->GetMethodID(static_cast<jclass>(player_ctx.g_ref_audio_track_cls), "release", "()V");
+           env->CallVoidMethod(player_ctx.g_ref_audio_track, release_mid);
 
-void release_player_context_if_need(PlayerContext& player_ctx) {
+           env->DeleteGlobalRef(player_ctx.g_ref_audio_track_cls);
+           player_ctx.g_ref_audio_track_cls = NULL;
+           env->DeleteGlobalRef(player_ctx.g_ref_audio_track);
+           player_ctx.g_ref_audio_track = NULL;
+       }
+        if( player_ctx.g_ref_avplay_cls ) {
+            env->DeleteGlobalRef(player_ctx.g_ref_avplay_cls);
+            player_ctx.g_ref_avplay_cls = NULL;
+        }
+    }
+
+    if( player_ctx.a_frame ) {
+        av_frame_free(&player_ctx.a_frame);
+        player_ctx.a_frame = NULL;
+    }
+    if( player_ctx.swr_ctx ) {
+        if( swr_is_initialized(player_ctx.swr_ctx) > 0 ) {
+            swr_close(player_ctx.swr_ctx);
+        }
+        swr_free(&(player_ctx.swr_ctx));
+    }
+    /*
+     // 是否出错，为啥？
+     if( player_ctx.audio_out_buffer ) {
+        av_freep(player_ctx.audio_out_buffer);
+        player_ctx.audio_out_buffer = NULL;
+    }*/
     if( player_ctx.nativeWindow ) {
         ANativeWindow_release(player_ctx.nativeWindow);
     }
     if( player_ctx.buffer ) {
         delete player_ctx.buffer;
     }
-    if( player_ctx.a_frame ) {
-        av_frame_free(&player_ctx.a_frame);
-    }
+
     if( player_ctx.v_frame ) {
         av_frame_free(&player_ctx.v_frame);
     }
@@ -324,4 +512,14 @@ void release_player_context_if_need(PlayerContext& player_ctx) {
     if( player_ctx.ifmt_ctx ) {
         avformat_close_input(&player_ctx.ifmt_ctx);
     }
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_release(JNIEnv *env, jclass clazz) {
+//    LOGD("end %#x", &g_player_ctx);
+//    PlayerContext* player_ctx = &g_player_ctx;
+    // 为啥不能修改？？？？为啥奔溃呢？
+//    player_ctx->playing = false;
+    return JNI_TRUE;
 }
