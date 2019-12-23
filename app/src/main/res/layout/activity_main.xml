@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView android:layout_width="match_parent"
+    android:layout_height="match_parent"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+<LinearLayout
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     android:orientation="vertical"
     tools:context=".MainActivity">
     <LinearLayout
@@ -30,12 +32,7 @@
     <TextView
         android:id="@+id/sample_text"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintLeft_toLeftOf="parent"
-        app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_height="wrap_content" />
 
     <Button
         android:id="@+id/btn_get_info"
@@ -100,6 +97,25 @@
         android:textColor="#333"
         android:padding="10dp"
         android:onClick="onClick"/>
+    <Button
+        android:id="@+id/btn_play_avv2"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="简简单单播放音视频V2"
+        android:textSize="15sp"
+        android:textColor="#333"
+        android:padding="10dp"
+        android:onClick="onClick"/>
+
+    <Button
+        android:id="@+id/btn_opensles_play"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="OpenSLES 播放声音"
+        android:textSize="15sp"
+        android:textColor="#333"
+        android:padding="10dp"
+        android:onClick="onClick"/>
 
     <TextView
         android:id="@+id/tv_info"
@@ -110,3 +126,4 @@
         android:padding="10dp"/>
 
 </LinearLayout>
+</ScrollView>

@@ -31,6 +31,7 @@ public class SimpleAVPlayer {
                 audioFmt, bufferSize, AudioTrack.MODE_STREAM);
     }
     public native static boolean play(String fileName, Surface surface);
-
     public native static boolean release();
+    public native static boolean playV2(String fileName, Surface surface);
+    public native static boolean releaseV2();
 }

@@ -4,6 +4,8 @@
 #include "newbie.h"
 #include <pthread.h>
 #include <unistd.h>
+#include <queue>
+using namespace std;
 extern "C" {
 #include "libavformat/avformat.h"
 #include "libavcodec/avcodec.h"
@@ -34,6 +36,7 @@ struct PlayerContext {
     int stream_idx[2];
     AVCodecContext* codec_ctx[2];
     AVCodec* codec[2];
+    queue<AVPacket*> queues[2];
 
     AVFrame* v_frame;
     AVFrame* rgba_fame;
@@ -57,6 +60,11 @@ struct PlayerContext {
     uint8_t *audio_out_buffer;
 };
 
+struct Context {
+    struct PlayerContext* player_ctx;
+    int audio_or_video_idx;
+};
+
 static struct PlayerContext g_player_ctx = {
         .jvm = NULL,
         .g_ref_avplay_cls = NULL,
@@ -77,7 +85,7 @@ static struct PlayerContext g_player_ctx = {
 
 void release_player_context_if_need(JNIEnv* env, PlayerContext& player_ctx);
 
-void print_error(const char* msg, int code) {
+extern void print_error(const char* msg, int code) {
     char err[256] = {'\0'};
     av_strerror(code, err, sizeof(err));
     LOGE("%s, err: %s", msg, err);
@@ -144,6 +152,7 @@ label_end:
 }
 
 bool decode_audio_frame(JNIEnv* env, const PlayerContext * const player_ctx, AVPacket& packet) {
+    LOGD("decode_audio_frame %s", "");
     AVCodecContext* avctx = player_ctx->codec_ctx[AUDIO_IDX];
     AVCodec* codec = player_ctx->codec[AUDIO_IDX];
     int ret = avcodec_send_packet(avctx, &packet);
@@ -190,12 +199,13 @@ bool decode_audio_frame(JNIEnv* env, const PlayerContext * const player_ctx, AVP
         env->SetByteArrayRegion(jArr, 0, size, reinterpret_cast<const jbyte *>(player_ctx->audio_out_buffer));
         env->CallIntMethod(player_ctx->g_ref_audio_track, player_ctx->audio_write_mid, jArr, 0, size);
         env->DeleteLocalRef(jArr);
-        //usleep(16*1000);
+        usleep(16*1000);
     }
     return true;
 }
 
 bool decode_video_frame(const PlayerContext * const player_ctx, AVPacket& packet) {
+    LOGD("decode_video_frame %s", "");
     AVCodecContext* avctx = player_ctx->codec_ctx[VIDEO_IDX];
     AVCodec* codec = player_ctx->codec[VIDEO_IDX];
     int ret = avcodec_send_packet(avctx, &packet);
@@ -252,12 +262,12 @@ bool decode_video_frame(const PlayerContext * const player_ctx, AVPacket& packet
 }
 
 void* decode_data_fun(void* args) {
-    LOGD("in decode_data_fun, %s", "");
-    PlayerContext* player_ctx = (PlayerContext*) args;
+    Context* ctx = (Context*) args;
+    PlayerContext* player_ctx = ctx->player_ctx;
+    int idx = ctx->audio_or_video_idx;
+    LOGD("decode_data_fun, idx: %d", idx);
+    AVPacket* pkt = NULL;
     JNIEnv* env = NULL;
-    AVPacket packet;
-    int frame_count = 0;
-    int ret;
     if( JNI_OK != player_ctx->jvm->AttachCurrentThread(&env, NULL) ) {
         LOGE("AttachCurrentThread fail. %s", "");
         goto label_end;
@@ -269,25 +279,69 @@ void* decode_data_fun(void* args) {
         player_ctx->audio_write_mid = env->GetMethodID(
                 static_cast<jclass>(player_ctx->g_ref_audio_track_cls), "write", "([BII)I");
     }
-    while ( player_ctx->playing && (ret=av_read_frame(player_ctx->ifmt_ctx, &packet)) >= 0 ) {
-        LOGD("decode frame: %d", ++frame_count);
-        if( packet.stream_index == player_ctx->stream_idx[AUDIO_IDX] ) {
-            decode_audio_frame(env, player_ctx, packet);
-        } else if( packet.stream_index == player_ctx->stream_idx[VIDEO_IDX]){
-            decode_video_frame(player_ctx, packet);
+    for( ; ; ) {
+        pkt = player_ctx->queues[idx].front();
+        if( !pkt ) {
+            LOGD("is null..... end.... %s", "");
+            if( idx == 0 ) {
+                return 0;
+            } else {
+                break;
+            }
         }
-        av_packet_unref(&packet);
-    }
+        if( pkt->stream_index == AVMEDIA_TYPE_AUDIO ) {
+            decode_audio_frame(env, player_ctx, *pkt);
+        } else if( pkt->stream_index == AVMEDIA_TYPE_VIDEO ){
+            decode_video_frame(player_ctx, *pkt);
+        }
+        av_packet_unref(pkt);
+        av_freep(pkt);
+        player_ctx->queues[idx].pop();
 
-    if( ret < 0 ) {
-        print_error("av_read_frame fail. ", ret);
+        // 何时判断结束呢
+        // 如果同步读取frame的地方释放呢
     }
-    LOGD("end decode_data_fun %s", "");
 label_end:
     release_player_context_if_need(env, *player_ctx);
     if( env ) {
         player_ctx->jvm->DetachCurrentThread();
     }
+    pthread_exit(0);
+}
+
+void* read_frame(void* args) {
+    LOGD("in read_frame, %s", "");
+    PlayerContext* player_ctx = (PlayerContext*) args;
+    AVPacket packet;
+    AVPacket* pkt;
+    int frame_count = 0;
+    int ret;
+
+    while ( player_ctx->playing && (ret=av_read_frame(player_ctx->ifmt_ctx, &packet)) >= 0 ) {
+        LOGD("decode frame: %d", ++frame_count);
+        pkt = static_cast<AVPacket *>(av_malloc(sizeof(AVPacket)));
+        *pkt = packet;
+        int idx;
+        if( packet.stream_index == AVMEDIA_TYPE_AUDIO ) {
+            // decode_audio_frame(env, player_ctx, packet);
+            idx = AUDIO_IDX;
+        } else if( packet.stream_index == AVMEDIA_TYPE_VIDEO){
+            // decode_video_frame(player_ctx, packet);
+            idx = VIDEO_IDX;
+        } else {
+            av_freep(pkt);
+            continue;
+        }
+        player_ctx->queues[idx].push(pkt);
+        LOGD("idx: %d, size: %d", idx, player_ctx->queues[idx].size());
+    }
+    if( ret < 0 ) {
+        print_error("av_read_frame fail. ", ret);
+    }
+    // 等待消费者消费完成
+    usleep(1000);
+    LOGD("end decode_data_fun %s", "");
+
     pthread_exit(NULL);
 }
 
@@ -334,6 +388,7 @@ bool prepare_for_decode(PlayerContext *const player_ctx, JNIEnv *env, jobject su
         jobject au = env->CallStaticObjectMethod(av_player_cls, create_au_mid, player_ctx->out_sample_rate, player_ctx->out_nb_channel);
         player_ctx->g_ref_audio_track = env->NewGlobalRef(au);
         player_ctx->g_ref_audio_track_cls = env->NewGlobalRef(env->GetObjectClass(au));
+
     }
 
     /**
@@ -412,11 +467,12 @@ bool prepare_for_decode(PlayerContext *const player_ctx, JNIEnv *env, jobject su
 
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_play(JNIEnv *env, jclass clazz,
+Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_playV2(JNIEnv *env, jclass clazz,
                                                           jstring file_name, jobject surface) {
     jboolean isCopy = JNI_FALSE;
     PlayerContext* const player_ctx = &g_player_ctx;
-
+    struct Context ctx1 = {player_ctx, 0};
+    struct Context ctx2 = {player_ctx, 1};
     if( JNI_OK != env->GetJavaVM(&player_ctx->jvm) ) {
         LOGD("GetJavaVM fail %s", "");
     }
@@ -439,8 +495,14 @@ Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_play(JNIEnv *env, jclass cla
 
     player_ctx->playing = true;
     pthread_t pt;
-    pthread_create(&pt, NULL, decode_data_fun, (void*)player_ctx);
+    pthread_create(&pt, NULL, read_frame, (void*)player_ctx);
     LOGD("after pthread_create %s", "");
+    usleep(32);
+
+    pthread_create(&pt, NULL, decode_data_fun, (void*)&ctx1);
+    pthread_create(&pt, NULL, decode_data_fun, (void*)&ctx2);
+    // 难受，延长让消费者获取其值吧
+    usleep(1000);
 
     env->ReleaseStringUTFChars(file_name, file);
     return JNI_TRUE;
@@ -515,7 +577,7 @@ void release_player_context_if_need(JNIEnv* env, PlayerContext& player_ctx) {
 
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_release(JNIEnv *env, jclass clazz) {
+Java_com_godot_ffmpeg_1newbie_player_SimpleAVPlayer_releaseV2(JNIEnv *env, jclass clazz) {
 //    LOGD("end %#x", &g_player_ctx);
 //    PlayerContext* player_ctx = &g_player_ctx;
     // 为啥不能修改？？？？为啥奔溃呢？

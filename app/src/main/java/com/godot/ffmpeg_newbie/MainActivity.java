@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.godot.ffmpeg_newbie.player.OpenSLESPlay;
 import com.godot.ffmpeg_newbie.player.SimpleAudioPlay;
 
 import java.io.File;
@@ -128,7 +129,19 @@ public class MainActivity extends AppCompatActivity {
             case R.id.btn_play_av:
                 startActivity(new Intent(this, SimplePlayAVActivity.class));
                 break;
+                case R.id.btn_play_avv2:
+                startActivity(SimplePlayAVActivity.buildIntent(this, true));
+                break;
+
+                case R.id.btn_opensles_play:
+                    doOpenSLESPlay();
+                break;
+
         }
+    }
+
+    private void doOpenSLESPlay() {
+        OpenSLESPlay.play("");
     }
 
     private native static void testPthread();
