@@ -187,8 +187,7 @@ bool decode_audio_frame(JNIEnv* env, const PlayerContext * const player_ctx, AVP
             LOGE("env->NewByteArray(out_samples*player_ctx->out_nb_channel) fail. %s", "");
             return false;
         }
-        env->SetByteArrayRegion(jArr, 0, size,
-                                reinterpret_cast<const jbyte *>(player_ctx->audio_out_buffer));
+        env->SetByteArrayRegion(jArr, 0, size, reinterpret_cast<const jbyte *>(player_ctx->audio_out_buffer));
         env->CallIntMethod(player_ctx->g_ref_audio_track, player_ctx->audio_write_mid, jArr, 0, size);
         env->DeleteLocalRef(jArr);
         //usleep(16*1000);
@@ -481,7 +480,7 @@ void release_player_context_if_need(JNIEnv* env, PlayerContext& player_ctx) {
         swr_free(&(player_ctx.swr_ctx));
     }
     /*
-     // 是否出错，为啥？
+     // 释放出错，为啥？
      if( player_ctx.audio_out_buffer ) {
         av_freep(player_ctx.audio_out_buffer);
         player_ctx.audio_out_buffer = NULL;

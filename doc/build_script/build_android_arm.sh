@@ -15,8 +15,19 @@ export CPU=arm
 # 导出安装目录前缀，具体可见./configure --help 列出的Standard options:
 export PREFIX=$(pwd)/android/$CPU
 # c编译参数 arm指令集
-export ADDI_CFLAGS="-marm -I$NDK/sysroot/usr/include/arm-linux-androideabi -isysroot $NDK/sysroot "
-# 配置 具体含义可见./configure --help
+# gcc编译参数说明
+# --sysroot xx 指定头文件查找目录xx/usr/include 库文件查找目录 xx/usr/lib
+# -isysroot xx 指定头文件查找目录xx/usr/include 会覆盖--sysroot指定的头文件查找目录
+# -isystem xx 指定头文件查找目录xx
+# -Ixx 指定头文件查找目录为xx
+# -Lxx 指定库查找目录xx
+# -lxx 指定库名称
+
+# 编译参数可取巧获取，从native工程的app/.cxx/cmake/release/armeabi-v7a/build.ninja文件的FLAGS变量获取，注意去掉不必要的
+# 例子：FLAGS = -isystem /Users/wangrenxing/ffmpeg/android-ndk-r17c/sysroot/usr/include/arm-linux-androideabi -D__ANDROID_API__=16 -g -DANDROID -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -march=armv7-a -mfloat-abi=softfp -mfpu=vfpv3-d16 -mthumb -Wa,--noexecstack -Wformat -Werror=format-security -std=c++11  -Os -DNDEBUG  -fPIC
+
+export ADDI_CFLAGS="-Os -fpic -march=armv7-a -I$NDK/sysroot/usr/include/arm-linux-androideabi -isysroot $NDK/sysroot "
+# 配置 具体含义可见./configure --help，配合搜索关键词在configure文件的使用，例如target_os可以确定编译到不同系统时的参数
 ./configure \
 --prefix=$PREFIX \
 --enable-shared \
@@ -29,11 +40,11 @@ export ADDI_CFLAGS="-marm -I$NDK/sysroot/usr/include/arm-linux-androideabi -isys
 --disable-yasm \
 --disable-symver \
 --enable-cross-compile \
---target-os=linux \
+--target-os=android \
 --cross-prefix=$TOOLCHAIN/bin/arm-linux-androideabi- \
 --sysroot=$SYSROOT \
 --arch=$CPU \
---extra-cflags="-Os -fpic $ADDI_CFLAGS" \
+--extra-cflags="$ADDI_CFLAGS" \
 --extra-ldflags="$ADDI_LDFLAGS" $ADDITIONAL_CONFIGURE_FLAG
 # 清除
 make clean

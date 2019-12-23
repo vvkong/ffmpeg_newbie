@@ -40,6 +40,7 @@ static jobject g_ref_uuid_cls = NULL;
 // JavaVM全局共享 虚拟机在jni层封装
 // 通过AttachCurrentThread附加到虚拟机的线程在查找类时只会通过系统类加载器进行查找，不会通过应用类加载器进行查找，
 // 因此可以加载系统类，但是不能加载非系统类，如自己在java层定义的类会返回NULL
+// https://developer.android.google.cn/training/articles/perf-jni#java
 /*
  * 方法一：获取classLoader，通过调用classLoader的loadClass来加载自定义类。适合自定义类比较多的情况。利用可以调系统类来实现。
  * 方法二：在主线程创建一个全局的自定义类引用。适合自定义类比较少的情况
